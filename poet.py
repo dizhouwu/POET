@@ -1,8 +1,6 @@
 import numpy as np
 import numba
 import scipy
-from copy import deepcopy
-
 class DotDict(dict):
     def __init__(self, *args, **kwargs):
         super(DotDict, self).__init__(*args, **kwargs)
@@ -54,6 +52,13 @@ def estimate_nfactor_act(X, C=1):
 
 
 sign = lambda x: x and (1 if x >0 else -1)
+
+def _estimate_K(Y):
+    POETKhat_y = POETKhat(Y)
+    K1=0.25*(POETKhat_y.K1HL+POETKhat_y.K2HL+POETKhat_y.K1BN+POETKhat_y.K2BN)
+    K=np.floor(K1)+1
+    return K
+    
 def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
     """
     Estimates large covariance matrices in approximate factor models by thresholding principal orthogonal complements.
@@ -82,8 +87,7 @@ def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
     Y = Y- Y.mean(axis=1)[:, np.newaxis]
 
     if K==-np.inf:
-        K1=0.25*(POETKhat(Y).K1HL+POETKhat(Y).K2HL+POETKhat(Y).K1BN+POETKhat(Y).K2BN)
-        K=np.floor(K1)+1
+        K=_estimate_K(Y)
 
     if K>0:
         Dd, V = np.linalg.eig(Y.T @ Y)
@@ -212,35 +216,37 @@ def POETKhat(Y):
     for i in range(re): #generate the subsets, "re" of them
         pi[i]=min(i*np.floor(p/re)+min(p,5),p)
         ni[i]=min(i*np.floor(n/re)+min(n,5),n)
-        if (i==re):
+        if i==re-1:
             pi[i]=p
             ni[i]=n
 
         Yi=Y[:int(pi[i]),:int(ni[i])]
         frob=np.zeros(rmax)
         penal=np.zeros(rmax)
+        print(Yi.shape)
 
         for k in range(min(int(pi[i]),int(ni[i]),rmax)):
             Dd, V = np.linalg.eig(Yi.T @ Yi)
             F = V[:,:k]
             LamPCA = Yi @ F / ni[i]
-            uhat = Yi - LamPCA @ F.T # pi by ni
+            
+            uhat = Yi - LamPCA @ (F.T) # pi by ni
             frob[k]=sum(np.diag(uhat @ uhat.T))/(pi[i]*ni[i])
             gT1HL[i]=np.log((pi[i]*ni[i])/(pi[i]+ni[i]))*(pi[i]+ni[i])/(pi[i]*ni[i])
             gT2HL[i]=np.log(min(pi[i],ni[i]))*(pi[i]+ni[i])/(pi[i]*ni[i])
 
             for l in range(100): # only fills in the ICs up to k, which may be <rmax
-                IC[1,i,k,l]=np.log(frob[k])+c[l]*k*gT1HL[i]
-                IC[2,i,k,l]=np.log(frob[k])+c[l]*k*gT2HL[i]
+                IC[0,i,k,l]=np.log(frob[k])+c[l]*k*gT1HL[i]
+                IC[1,i,k,l]=np.log(frob[k])+c[l]*k*gT2HL[i]
 
 
     rhat=np.zeros([2,re,100])
     for i in range(re):
         for l in range(100):
             m=min(pi[i],ni[i],rmax)
-            temp1=np.argmin(IC[0,i,:m,l])
+            temp1=np.argmin(IC[0,i,:int(m),l])
             rhat[0,i,l]=temp1
-            temp2=np.argmin(IC[1,i,:m,l])
+            temp2=np.argmin(IC[1,i,:int(m),l])
             rhat[1,i,l]=temp2
 
     sc1, sc2 = np.zeros(100), np.zeros(100)
@@ -255,10 +261,9 @@ def POETKhat(Y):
     K1HL=rhat[0,0,ctemp1]
 
     c2vec=np.where(sc2==0)
-    ctemp1=c1vec[0]
-    c1=c[ctemp1]
-    K1HL=rhat[0,0,ctemp1]
-
+    ctemp2=c2vec[0]
+    c2=c[ctemp2]
+    K2HL=rhat[1,0,ctemp2]
 
     c=1
     rmax=10
@@ -267,12 +272,12 @@ def POETKhat(Y):
 
     for k in range(rmax):
         Dd, V = np.linalg.eig(Y.T @ Y)
-        F = V[:,:K]
+        F = V[:,:k]
         LamPCA = Y @ F / n
-        uhat = Yi - LamPCA @ F.T # p by n
+        uhat = Y - LamPCA @ (F.T) # p by n
         frob[k]=sum(np.diag(uhat @ uhat.T))/(p*n)
         gT1BN=np.log(np.log((p*n))/(p+n))*(p+n)/(p*n)
-        gT2B=np.log(min(p,n))*(p+n)/(p*n)
+        gT2BN=np.log(min(p,n))*(p+n)/(p*n)
         IC[0,k]=np.log(frob[k]) +k*gT1BN
         IC[1,k]=np.log(frob[k]) +k*gT2BN
 
@@ -385,6 +390,12 @@ if __name__ == "__main__":
       0.159693,
       1.0314144,
       1.10792768]])
-    a =POET(mat,K=3,C=0.5, thres='soft', matrix='vad')
+    q=np.array([
+[0.9338962, 0.8962844,-1.972567 ,-0.4636070 ,-0.2019526 ,-0.6004643, -0.9488705, -1.2407917, -1.2609670 , 1.5208529 , 1.98623137, -0.8689192],
+[1.0327674 ,0.4097823 ,-1.106610  ,0.5686172 ,-1.0343270 , 0.5762939 ,1.4692234 ,-1.3522832 , 1.2480923 ,-0.3349737 ,-0.01989561 ,-0.8288348],
+[-0.9981944 ,0.3324452 ,-1.916286 , 0.5283962,  0.4547731 , 0.5905271 ,1.6798249 , 0.9585762 , 0.6185305  ,1.0546995 ,-1.31951064 , 1.3205747]])
+#     print(estimate_nfactor_act(q,C=0.2))
+    print(_estimate_K(q))
+#     a =POET(mat,C=0.5, thres='soft', matrix='vad')
 
-    print(a)
+#     print(a)
