@@ -1,6 +1,7 @@
 import numpy as np
 import numba
 import scipy
+from copy import deepcopy
 
 class DotDict(dict):
     def __init__(self, *args, **kwargs):
@@ -22,15 +23,18 @@ class DotDict(dict):
         else:
             return cls({key: cls.__from_nested_dict(data[key]) for key in data})
 
+
 sign = lambda x: x and (1, -1)[x<0]
 def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
+#     if K == -np.inf:
+#         K = estimate_nfactor_act(Y)
     # Y: p feature * n obs
     p, n = Y.shape
     Y = Y- Y.mean(axis=1)[:, np.newaxis]
     
     if K==-np.inf:
         K1=0.25*(POETKhat(Y).K1HL+POETKhat(Y).K2HL+POETKhat(Y).K1BN+POETKhat(Y).K2BN)
-        K=floor(K1)+1
+        K=np.floor(K1)+1
 
     if K>0:
         Dd, V = np.linalg.eig(Y.T @ Y)
@@ -81,7 +85,7 @@ def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
     elif thres == 'hard':
         for i in range(p):
             for j in range(i):
-                if np.abs(R[i,j]) < lbd[i,j] and j < i:
+                if np.abs(R[i,j]) < lambda_[i,j] and j < i:
                     Rthresh[i,j] = 0
                 else:
                     Rthresh[i,j] = R[i,j]
@@ -139,7 +143,7 @@ def POETCmin(Y,K,thres,matrix):
 
 def POETKhat(Y):
     p, n = Y.shape
-    Y = Y.sub(Y.mean(axis=1),axis=0)
+    Y = Y- Y.mean(axis=1)[:, np.newaxis]
     #Hallin and Liska method
 
     c=np.arange(0.05, 5.05,0.05)
@@ -149,8 +153,8 @@ def POETKhat(Y):
     gT1HL, gT2HL, pi, ni=np.ones(20),np.ones(20),np.ones(20),np.ones(20)
 
     for i in range(re): #generate the subsets, "re" of them
-        pi[i]=min(i*floor(p/re)+min(p,5),p)
-        ni[i]=min(i*floor(n/re)+min(n,5),n)
+        pi[i]=min(i*np.floor(p/re)+min(p,5),p)
+        ni[i]=min(i*np.floor(n/re)+min(n,5),n)
         if (i==re):
             pi[i]=p
             ni[i]=n
@@ -219,3 +223,6 @@ def POETKhat(Y):
     
     result = DotDict({"K1HL":K1HL,"K2HL":K2HL,"K1BN":K1BN,"K2BN":K2BN,"IC":IC})
     return result
+
+
+POET(np.random.normal(size=(100,100)),C=0.5, thres='soft', matrix='vad')
