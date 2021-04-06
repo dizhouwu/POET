@@ -55,11 +55,26 @@ def estimate_nfactor_act(X, C=1):
 
 sign = lambda x: x and (1 if x >0 else -1)
 def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
+    """
+    Estimates large covariance matrices in approximate factor models by thresholding principal orthogonal complements.
+
+    Y:p by n matrix of raw data, where p is the dimensionality, n is the sample size. It is recommended that Y is de-meaned, i.e., each row has zero mean
+    K: number of factors
+    C: float, the positive constant for thresholding.C=0.5 performs quite well for soft thresholding
+    thres: str, choice of thresholding. K=0 corresponds to threshoding the sample covariance directly
+    matrix: the option of thresholding either correlation or covairance matrix.'cor': threshold the error correlation matrix then transform back to covariance matrix. 'vad': threshold the error covariance matrix directly.
+
+    Return:
+    SigmaY: estimated p by p covariance matrix of y_t
+    SigmaU: estimated p by p covariance matrix of u_t
+    factors: estimated unobservable factors in a K by T matrix form
+    loadings: estimated factor loadings in a p by K matrix form
+    """
     if K == -np.inf:
         try:
             K = estimate_nfactor_act(Y)
         except IndexError:
-            print("ill-formed matrix Y, provide K with suggestion (K>0 and K<=8)")
+            print("ill-formed matrix Y, provide K with suggestion (K>0 and K<8)")
             return
 
     # Y: p feature * n obs
@@ -157,6 +172,10 @@ def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
 
 
 def POETCmin(Y,K,thres,matrix):
+    """
+    This function is for determining the minimum constant in the threshold that guarantees the positive
+definiteness of the POET estimator.
+    """
     p, n = Y.shape
 
     def mineig(Y,K,C,thres,matrix):
@@ -175,7 +194,11 @@ def POETCmin(Y,K,thres,matrix):
     return result
 
 
+
 def POETKhat(Y):
+    """
+    This function is for calculating the optimal number of factors in an approximate factor model.
+    """
     p, n = Y.shape
     Y = Y- Y.mean(axis=1)[:, np.newaxis]
     #Hallin and Liska method
@@ -192,13 +215,14 @@ def POETKhat(Y):
         if (i==re):
             pi[i]=p
             ni[i]=n
-        Yi=Y[:pi[i],:ni[i]]
+
+        Yi=Y[:int(pi[i]),:int(ni[i])]
         frob=np.zeros(rmax)
         penal=np.zeros(rmax)
 
-        for k in range(min(pi[i],ni[i],rmax)):
+        for k in range(min(int(pi[i]),int(ni[i]),rmax)):
             Dd, V = np.linalg.eig(Yi.T @ Yi)
-            F = V[:,:K]
+            F = V[:,:k]
             LamPCA = Yi @ F / ni[i]
             uhat = Yi - LamPCA @ F.T # pi by ni
             frob[k]=sum(np.diag(uhat @ uhat.T))/(pi[i]*ni[i])
@@ -257,6 +281,7 @@ def POETKhat(Y):
 
     result = DotDict({"K1HL":K1HL,"K2HL":K2HL,"K1BN":K1BN,"K2BN":K2BN,"IC":IC})
     return result
+
 
 
 if __name__ == "__main__":
