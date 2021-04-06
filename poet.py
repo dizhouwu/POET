@@ -23,8 +23,45 @@ class DotDict(dict):
         else:
             return cls({key: cls.__from_nested_dict(data[key]) for key in data})
 
+'''
+def estimate_nfactor_act(X, C=1):
+    """
+    estimate number of factors given data matrix X (n*p)
+    threshold on eigenvalues of correlation matrix (bias corrected)
+    https://arxiv.org/abs/1909.10710
+    K = # eigenvalues of sample corr that > 1 + sqrt(p / (n-1))
+    """
+    n, p = X.shape
 
-sign = lambda x: x and (1, -1)[x<0]
+    # 1. get sample correlation matrix and eigenvalues
+    corr = np.corrcoef(X.T)
+    evals = np.flip(np.linalg.eigvalsh(corr))  # order large to small
+
+    # 2. get bias corrected eigenvalues
+    evals_adj = np.zeros(p - 1)
+    for i in range(p - 1):
+        mi = (
+            np.sum(1.0 / (evals[(i + 1) :] - evals[i]))
+            + 4.0 / (evals[i + 1] - evals[i])
+        ) / (p - i)
+        rho = (p - i) / (n - 1)
+        evals_adj[i] = -1.0 / (-(1 - rho) / evals[i] + rho * mi)
+
+    # 3. threshold to estimate number of factors
+    thres = 1.0 + np.sqrt(p / (n - 1)) * C
+    return np.where(evals_adj > thres)[0][-1] + 1  # max_j that lambda_j > thres
+
+
+if __name__ == "__main__":
+    n, m, k = int(1e3) + 10, int(1e3), 5
+    A, B = np.random.random((n, k)), np.random.random((k, m))
+    X = A @ B * 1 + np.random.multivariate_normal(
+        mean=np.zeros(m), cov=np.eye(m), size=n
+    )
+    nfactor = estimate_nfactor_act(X, C=1)
+    print(k, nfactor)
+'''
+sign = lambda x: x and (1 if x >0 else -1)
 def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
 #     if K == -np.inf:
 #         K = estimate_nfactor_act(Y)
@@ -117,7 +154,7 @@ def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
 
     result = DotDict({'SigmaU':SigmaU,
               'SigmaY':SigmaY,
-              'factors':F.t,
+              'factors':F.T,
               'loadings':LamPCA})
     return result
     
@@ -225,4 +262,105 @@ def POETKhat(Y):
     return result
 
 
-POET(np.random.normal(size=(100,100)),C=0.5, thres='soft', matrix='vad')
+mat=np.array([[-0.62029989,
+  0.10368819,
+  -2.6429999,
+  -0.6644259,
+  -0.9588529,
+  -0.57635678,
+  -0.21164741,
+  -0.9944665,
+  -0.5399032,
+  -0.90196802],
+ [-0.36667783,
+  0.03652214,
+  0.0154076,
+  -0.1750231,
+  1.811448,
+  2.42165275,
+  -0.10193561,
+  0.3508604,
+  -0.9005045,
+  -0.75846084],
+ [2.03660714,
+  -0.25794352,
+  -1.0779967,
+  0.8037299,
+  0.2745545,
+  -1.22127856,
+  -1.35214726,
+  -0.2573654,
+  0.1993435,
+  1.72361045],
+ [0.63555031,
+  0.38537656,
+  1.2166375,
+  -0.9678573,
+  0.5881848,
+  0.90408146,
+  -0.47367684,
+  0.4895787,
+  0.2945947,
+  -1.24315542],
+ [1.74910748,
+  -1.80102071,
+  -0.9853598,
+  -2.1408104,
+  0.6442657,
+  0.30564053,
+  0.50115736,
+  0.377065,
+  0.8555455,
+  -0.03415805],
+ [0.38047868,
+  -0.31374989,
+  -1.0071146,
+  -3.2459573,
+  -2.1209848,
+  2.26800656,
+  -0.6119524,
+  -1.337323,
+  -1.8475929,
+  0.27715889],
+ [-0.20937215,
+  -0.54497866,
+  1.6817701,
+  -0.6987112,
+  -1.4058039,
+  -0.95944526,
+  -0.58590743,
+  0.9026475,
+  -0.1828129,
+  -0.10631256],
+ [0.04250279,
+  -1.15922195,
+  -0.6142242,
+  1.2222378,
+  -1.1787129,
+  1.20142,
+  0.03496321,
+  0.5629185,
+  0.2380585,
+  -0.51621383],
+ [0.84506649,
+  0.86538678,
+  -0.1047678,
+  1.5045583,
+  0.5522289,
+  -0.04782663,
+  0.55088789,
+  -0.5293272,
+  -0.8919249,
+  0.51648943],
+ [0.77542942,
+  0.14709082,
+  2.5020118,
+  -0.4079575,
+  -0.1691369,
+  -0.66425291,
+  -0.70136209,
+  0.159693,
+  1.0314144,
+  1.10792768]])
+a =POET(mat,K=3,C=0.5, thres='soft', matrix='vad')
+print(a)
