@@ -2,7 +2,6 @@ import numpy as np
 import numba
 import scipy
 
-#util
 class DotDict(dict):
     def __init__(self, *args, **kwargs):
         super(DotDict, self).__init__(*args, **kwargs)
@@ -23,12 +22,11 @@ class DotDict(dict):
         else:
             return cls({key: cls.__from_nested_dict(data[key]) for key in data})
 
-sign = lambda x: [_ and (1, -1)[_<0] for _ in x]
-
+sign = lambda x: x and (1, -1)[x<0]
 def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
     # Y: p feature * n obs
     p, n = Y.shape
-    Y = Y.sub(Y.mean(axis=1),axis=0)
+    Y = Y- Y.mean(axis=1)[:, np.newaxis]
     
     if K==-np.inf:
         K1=0.25*(POETKhat(Y).K1HL+POETKhat(Y).K2HL+POETKhat(Y).K1BN+POETKhat(Y).K2BN)
@@ -67,7 +65,7 @@ def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
             lambda_[i,j] = roottheta[i,j]*rate*C
             lambda_[j,i] = lambda_[i,j]
 
-    Rthresh = np.zeros(0,p,p)
+    Rthresh = np.zeros([p,p])
 
     if thres == 'soft':
         for i in range(p):
@@ -104,8 +102,9 @@ def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
                     Rthresh[i,j] = R[i,j]
                 Rthresh[j,i] = Rthresh[i,j]
                 
-    SigmaU = np.zeros(0,p,p)
+    SigmaU = np.zeros([p,p])
     if matrix == 'cor':
+        print(SuDiag.shape)
         SigmaU = SuDiag^(1/2) @ Rthresh * SuDiag^(1/2)
     if matrix == 'vad':
         SigmaU = Rthresh
@@ -210,7 +209,7 @@ def POETKhat(Y):
         LamPCA = Y @ F / n
         uhat = Yi - LamPCA @ F.T # p by n
         frob[k]=sum(np.diag(uhat @ uhat.T))/(p*n)
-        gT1BN=np.log(log((p*n))/(p+n))*(p+n)/(p*n)
+        gT1BN=np.log(np.log((p*n))/(p+n))*(p+n)/(p*n)
         gT2B=np.log(min(p,n))*(p+n)/(p*n)
         IC[0,k]=np.log(frob[k]) +k*gT1BN
         IC[1,k]=np.log(frob[k]) +k*gT2BN
