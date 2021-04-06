@@ -23,7 +23,7 @@ class DotDict(dict):
         else:
             return cls({key: cls.__from_nested_dict(data[key]) for key in data})
 
-'''
+
 def estimate_nfactor_act(X, C=1):
     """
     estimate number of factors given data matrix X (n*p)
@@ -52,19 +52,16 @@ def estimate_nfactor_act(X, C=1):
     return np.where(evals_adj > thres)[0][-1] + 1  # max_j that lambda_j > thres
 
 
-if __name__ == "__main__":
-    n, m, k = int(1e3) + 10, int(1e3), 5
-    A, B = np.random.random((n, k)), np.random.random((k, m))
-    X = A @ B * 1 + np.random.multivariate_normal(
-        mean=np.zeros(m), cov=np.eye(m), size=n
-    )
-    nfactor = estimate_nfactor_act(X, C=1)
-    print(k, nfactor)
-'''
+
 sign = lambda x: x and (1 if x >0 else -1)
 def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
-#     if K == -np.inf:
-#         K = estimate_nfactor_act(Y)
+    if K == -np.inf:
+        try:
+            K = estimate_nfactor_act(Y)
+        except IndexError:
+            print("ill-formed matrix Y, provide K with suggestion (K>0 and K<=8)")
+            return
+
     # Y: p feature * n obs
     p, n = Y.shape
     Y = Y- Y.mean(axis=1)[:, np.newaxis]
@@ -363,6 +360,6 @@ if __name__ == "__main__":
       0.159693,
       1.0314144,
       1.10792768]])
-#     a =POET(mat,K=3,C=0.5, thres='soft', matrix='vad')
-    a =POET(mat,K=3, C=0.5, thres='scad', matrix='cor')
+    a =POET(mat,K=3,C=0.5, thres='soft', matrix='vad')
+
     print(a)
