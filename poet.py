@@ -81,16 +81,18 @@ def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
         except IndexError:
             print("ill-formed matrix Y, provide K with suggestion (K>0 and K<8)")
             return
+        
+#     if K==-np.inf:
+#         K=_estimate_K(Y)
 
     # Y: p feature * n obs
     p, n = Y.shape
     Y = Y- Y.mean(axis=1)[:, np.newaxis]
 
-    if K==-np.inf:
-        K=_estimate_K(Y)
-
     if K>0:
-        Dd, V = np.linalg.eig(Y.T @ Y)
+        Dd, V = np.linalg.eigh(Y.T @ Y)
+        Dd = Dd[::-1]
+        V = np.flip(V,axis=1)
         F = np.sqrt(n)*V[:,:K]  #F is n by K
         LamPCA = Y @ F / n
         uhat = Y - LamPCA @ F.T  # p by n
@@ -103,6 +105,7 @@ def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
 
     SuPCA = uhat @ uhat.T / n
     SuDiag = np.diag(np.diag(SuPCA))
+    
     if matrix == 'cor':
         R = np.linalg.inv(SuDiag**(1/2)) @ SuPCA @ np.linalg.inv(SuDiag**(1/2))
     if matrix == 'vad':
@@ -116,10 +119,9 @@ def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
     lambda_ = np.zeros([p,p])
 
     for i in range(p):
-        for j in range(i): # symmetric matrix
+        for j in range(i+1): # symmetric matrix
             uu[i,j,:] = uhat[i,] * uhat[j,]
             roottheta[i,j] = np.std(uu[i,j,:],ddof=1)
-            print(np.std(uu[i,j,:],ddof=1))
             lambda_[i,j] = roottheta[i,j]*rate*C
             lambda_[j,i] = lambda_[i,j]
 
@@ -127,7 +129,7 @@ def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
 
     if thres == 'soft':
         for i in range(p):
-            for j in range(i):
+            for j in range(i+1):
                 if np.abs(R[i,j]) < lambda_[i,j] and j < i:
                     Rthresh[i,j] = 0
                 elif j == i:
@@ -138,7 +140,7 @@ def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
 
     elif thres == 'hard':
         for i in range(p):
-            for j in range(i):
+            for j in range(i+1):
                 if np.abs(R[i,j]) < lambda_[i,j] and j < i:
                     Rthresh[i,j] = 0
                 else:
@@ -147,7 +149,7 @@ def POET(Y, K=-np.inf, C=-np.inf, thres='soft', matrix='cor'):
 
     elif thres == 'scad':
         for i in range(p):
-            for j in range(i):
+            for j in range(i+1):
                 if j == i:
                     Rthresh[i,j] = R[i,j]
                 elif abs(R[i,j] < lambda_[i,j]):
@@ -223,21 +225,22 @@ def POETKhat(Y):
         Yi=Y[:int(pi[i]),:int(ni[i])]
         frob=np.zeros(rmax)
         penal=np.zeros(rmax)
-        print(Yi.shape)
 
         for k in range(min(int(pi[i]),int(ni[i]),rmax)):
-            Dd, V = np.linalg.eig(Yi.T @ Yi)
-            F = V[:,:k]
+            Dd, V = np.linalg.eigh(Yi.T @ Yi)
+            Dd = Dd[::-1]
+            V = np.flip(V,axis=1)
+            F = V[:,:k+1]
             LamPCA = Yi @ F / ni[i]
-            
             uhat = Yi - LamPCA @ (F.T) # pi by ni
-            frob[k]=sum(np.diag(uhat @ uhat.T))/(pi[i]*ni[i])
+
+            frob[k]=sum(np.diag(uhat @ (uhat.T)))/(pi[i]*ni[i])
             gT1HL[i]=np.log((pi[i]*ni[i])/(pi[i]+ni[i]))*(pi[i]+ni[i])/(pi[i]*ni[i])
             gT2HL[i]=np.log(min(pi[i],ni[i]))*(pi[i]+ni[i])/(pi[i]*ni[i])
 
             for l in range(100): # only fills in the ICs up to k, which may be <rmax
-                IC[0,i,k,l]=np.log(frob[k])+c[l]*k*gT1HL[i]
-                IC[1,i,k,l]=np.log(frob[k])+c[l]*k*gT2HL[i]
+                IC[0,i,k,l]=np.log(frob[k])+c[l]*(k+1)*gT1HL[i]
+                IC[1,i,k,l]=np.log(frob[k])+c[l]*(k+1)*gT2HL[i]
 
 
     rhat=np.zeros([2,re,100])
@@ -249,6 +252,7 @@ def POETKhat(Y):
             temp2=np.argmin(IC[1,i,:int(m),l])
             rhat[1,i,l]=temp2
 
+    rhat+=1
     sc1, sc2 = np.zeros(100), np.zeros(100)
 
     for l in range(100):
@@ -256,12 +260,13 @@ def POETKhat(Y):
         sc2[l] = np.std(rhat[1,:,l],ddof=1)
 
     c1vec=np.where(sc1==0)
-    ctemp1=c1vec[0]
+    ctemp1=c1vec[0][0]
+
     c1=c[ctemp1]
     K1HL=rhat[0,0,ctemp1]
 
     c2vec=np.where(sc2==0)
-    ctemp2=c2vec[0]
+    ctemp2=c2vec[0][0]
     c2=c[ctemp2]
     K2HL=rhat[1,0,ctemp2]
 
@@ -271,15 +276,19 @@ def POETKhat(Y):
     frob, penal = np.zeros(rmax), np.zeros(rmax)
 
     for k in range(rmax):
-        Dd, V = np.linalg.eig(Y.T @ Y)
-        F = V[:,:k]
+        Dd, V = np.linalg.eigh(Y.T @ Y)
+        Dd = Dd[::-1]
+        V = np.flip(V,axis=1)
+        F = V[:,:k+1]
+        
         LamPCA = Y @ F / n
         uhat = Y - LamPCA @ (F.T) # p by n
         frob[k]=sum(np.diag(uhat @ uhat.T))/(p*n)
         gT1BN=np.log(np.log((p*n))/(p+n))*(p+n)/(p*n)
         gT2BN=np.log(min(p,n))*(p+n)/(p*n)
-        IC[0,k]=np.log(frob[k]) +k*gT1BN
-        IC[1,k]=np.log(frob[k]) +k*gT2BN
+        IC[0,k]=np.log(frob[k]) +(k+1)*gT1BN
+        IC[1,k]=np.log(frob[k]) +(k+1)*gT2BN
+
 
     K1BN = np.argmin(IC[0,:])
     K2BN = np.argmin(IC[1,:])
@@ -290,112 +299,11 @@ def POETKhat(Y):
 
 
 if __name__ == "__main__":
-    mat=np.array([[-0.62029989,
-      0.10368819,
-      -2.6429999,
-      -0.6644259,
-      -0.9588529,
-      -0.57635678,
-      -0.21164741,
-      -0.9944665,
-      -0.5399032,
-      -0.90196802],
-     [-0.36667783,
-      0.03652214,
-      0.0154076,
-      -0.1750231,
-      1.811448,
-      2.42165275,
-      -0.10193561,
-      0.3508604,
-      -0.9005045,
-      -0.75846084],
-     [2.03660714,
-      -0.25794352,
-      -1.0779967,
-      0.8037299,
-      0.2745545,
-      -1.22127856,
-      -1.35214726,
-      -0.2573654,
-      0.1993435,
-      1.72361045],
-     [0.63555031,
-      0.38537656,
-      1.2166375,
-      -0.9678573,
-      0.5881848,
-      0.90408146,
-      -0.47367684,
-      0.4895787,
-      0.2945947,
-      -1.24315542],
-     [1.74910748,
-      -1.80102071,
-      -0.9853598,
-      -2.1408104,
-      0.6442657,
-      0.30564053,
-      0.50115736,
-      0.377065,
-      0.8555455,
-      -0.03415805],
-     [0.38047868,
-      -0.31374989,
-      -1.0071146,
-      -3.2459573,
-      -2.1209848,
-      2.26800656,
-      -0.6119524,
-      -1.337323,
-      -1.8475929,
-      0.27715889],
-     [-0.20937215,
-      -0.54497866,
-      1.6817701,
-      -0.6987112,
-      -1.4058039,
-      -0.95944526,
-      -0.58590743,
-      0.9026475,
-      -0.1828129,
-      -0.10631256],
-     [0.04250279,
-      -1.15922195,
-      -0.6142242,
-      1.2222378,
-      -1.1787129,
-      1.20142,
-      0.03496321,
-      0.5629185,
-      0.2380585,
-      -0.51621383],
-     [0.84506649,
-      0.86538678,
-      -0.1047678,
-      1.5045583,
-      0.5522289,
-      -0.04782663,
-      0.55088789,
-      -0.5293272,
-      -0.8919249,
-      0.51648943],
-     [0.77542942,
-      0.14709082,
-      2.5020118,
-      -0.4079575,
-      -0.1691369,
-      -0.66425291,
-      -0.70136209,
-      0.159693,
-      1.0314144,
-      1.10792768]])
-    q=np.array([
-[0.9338962, 0.8962844,-1.972567 ,-0.4636070 ,-0.2019526 ,-0.6004643, -0.9488705, -1.2407917, -1.2609670 , 1.5208529 , 1.98623137, -0.8689192],
-[1.0327674 ,0.4097823 ,-1.106610  ,0.5686172 ,-1.0343270 , 0.5762939 ,1.4692234 ,-1.3522832 , 1.2480923 ,-0.3349737 ,-0.01989561 ,-0.8288348],
-[-0.9981944 ,0.3324452 ,-1.916286 , 0.5283962,  0.4547731 , 0.5905271 ,1.6798249 , 0.9585762 , 0.6185305  ,1.0546995 ,-1.31951064 , 1.3205747]])
-#     print(estimate_nfactor_act(q,C=0.2))
-    print(_estimate_K(q))
-#     a =POET(mat,C=0.5, thres='soft', matrix='vad')
+    mat=np.array([
+[0.8841665, -0.2017119 , 0.7010793 ,-0.8378639],
+[-0.2017119,  2.2415674 ,-0.9365252 , 1.8725689],
+[ 0.7010793 ,-0.9365252 , 1.7681529 ,-0.6699727],
+[-0.8378639  ,1.8725689, -0.6699727 , 2.5185530],
+    ])
+    a =POET(mat,K=3,C=0.5, thres='soft', matrix='vad')
 
-#     print(a)
